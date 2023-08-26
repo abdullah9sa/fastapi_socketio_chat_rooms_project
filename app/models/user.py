@@ -15,11 +15,14 @@ class User(Model):
 UserInCreate = pydantic_model_creator(User, name="UserInCreate", exclude_readonly=True)
 
 user_pydantic_out = pydantic_model_creator(User,name="UserOut",exclude=("password",))
-
 # Custom Pydantic models for output
 class UserOutResponse(BaseModel):
     id: int
     username: str
     email: str
     join_date: datetime.datetime
+
+class UserPasswordOutResponse(BaseModel):
+    password: str
+
 

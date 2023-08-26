@@ -13,7 +13,7 @@ class RoomOut(RoomInDB):
 
 class MessageCreate(BaseModel):
     text: str
-    user_id: int
+    # user_id: int
     room_id: int
 
 class MessageInDB(MessageCreate):

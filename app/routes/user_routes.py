@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from app.models.user import User, UserInCreate, user_pydantic_out, UserOutResponse
+from app.models.user import *
 from tortoise.contrib.pydantic import pydantic_model_creator
 from pydantic import BaseModel
 import datetime
@@ -10,21 +10,22 @@ import jwt
 router = APIRouter()
 
 
-# Your JWT secret key (should be kept secret)
-SECRET_KEY = "your-secret-key"
+SECRET_KEY = "12345678"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 router = APIRouter()
 
 # OAuth2 password bearer for token handling
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# Verify user credentials and generate JWT token
-def authenticate_user(username: str, password: str):
-    user = User.get(username=username)
-    if user and bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
-        return user
+async def authenticate_user(username: str, password: str):
+    user = await User.get_or_none(username=username)  # Use get_or_none to get a single user
+    if user:
+        if bcrypt.checkpw(password.encode('utf-8'), user.password.encode('utf-8')):
+            print(f"Password hash of user {username}: {user.password}")
+            return user
+
 
 def create_access_token(data: dict, expires_delta: datetime.timedelta):
     to_encode = data.copy()
@@ -35,7 +36,7 @@ def create_access_token(data: dict, expires_delta: datetime.timedelta):
 
 @router.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(form_data.username, form_data.password)
+    user = await authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
