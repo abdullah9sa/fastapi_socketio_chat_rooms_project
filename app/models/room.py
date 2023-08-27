@@ -9,6 +9,14 @@ class Room(Model):
     messages = fields.ReverseRelation['Message']
     users = ManyToManyField('models.User', related_name='rooms')
 
+
+    # an index on the name column
+    class Meta:
+        indexes = [
+            ('name',)
+        ]
+
+
     def __str__(self):
         return self.name
 

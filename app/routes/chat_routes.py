@@ -6,6 +6,14 @@ from app.models.chat_messege import Chat_Messege
 from app.serializers.serializers import MessageOut, MessageCreate
 from tortoise.contrib.pydantic import pydantic_model_creator
 from fastapi import APIRouter
+from fastapi import Depends, FastAPI
+import aiocache
+from aiocache import caches, Cache
+from aiocache.serializers import JsonSerializer
+import json
+from fastapi import Query
+
+cache = caches.get("default")
 
 router = APIRouter()
 
@@ -32,13 +40,52 @@ async def join_room(room_id: int, user_id: int):
     await room.users.add(user)
     return {"message": "User joined the room"}
 
-# Route to return chat history
-@router.get("/chat-history/{room_id}", response_model=List[MessageOut], summary="Chat History")
+@router.get("/chat-history/{room_id}", summary="Chat History")
 async def chat_history(room_id: int):
     """
     Get the chat history of a room.
     """
-    room = await Room.get(id=room_id)
-
     messages = await Chat_Messege.filter(room_id=room_id).order_by('-timestamp').prefetch_related('user')
     return messages
+
+
+
+@router.get("/cached-chat-history/{room_id}", summary="Chat History")
+async def chat_history(
+    room_id: int,
+    page: int = Query(1, description="Page number", ge=1),
+    items_per_page: int = Query(10, description="Number of items per page", ge=1)
+):
+    """
+    Get the paginated chat history of a room.
+    """
+    cached_data = await cache.get(str(room_id))
+
+    if cached_data:
+        cached_messages = json.loads(cached_data)
+    else:
+        messages = await Chat_Messege.filter(room_id=room_id).order_by('-timestamp').prefetch_related('user')
+
+        serialized_messages = [
+            {
+                "id": message.id,
+                "text": message.text,
+                "timestamp": message.timestamp.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                "user_id": message.user_id,
+                "room_id": message.room_id
+            }
+            for message in messages
+        ]
+
+        await cache.set(str(room_id), json.dumps(serialized_messages), ttl=60)
+        cached_messages = serialized_messages
+
+    total_messages = len(cached_messages)
+    start_idx = (page - 1) * items_per_page
+    end_idx = start_idx + items_per_page
+    paginated_messages = cached_messages[start_idx:end_idx]
+
+    return {
+        "total_messages": total_messages,
+        "messages": paginated_messages
+    }

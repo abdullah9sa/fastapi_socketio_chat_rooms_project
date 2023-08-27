@@ -7,5 +7,11 @@ class Chat_Messege(Model):
     user = fields.ForeignKeyField('models.User', related_name='usrs')
     room = fields.ForeignKeyField('models.Room', related_name='rooms')
 
+    # an index on the timestamp column for performance
+    class Meta:
+        indexes = [
+            ('timestamp',)
+        ]
+
     def __str__(self):
         return f'{self.user.username} in {self.room.name} at {self.timestamp}'

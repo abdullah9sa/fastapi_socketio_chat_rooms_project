@@ -1,11 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from app.models.user import *
-from tortoise.contrib.pydantic import pydantic_model_creator
-from pydantic import BaseModel
 import datetime
 import bcrypt
 import jwt
+from fastapi import HTTPException
+from app.models.chat_messege import Chat_Messege
+from app.serializers.serializers import MessageOut, MessageCreate
+import socketio
+from app.models.room import Room
+from app.models.user import User
+from app.models.chat_messege import Chat_Messege
+from sockets import send_message_to_channel
+import jwt
+from fastapi import Header
+
 
 router = APIRouter()
 
@@ -99,4 +108,57 @@ async def register_user(user_data: UserInCreate):
     )
     return user_out_response
 
+def authenticate_token(authorization: str = Header(default=None)):
+    if authorization is None:
+        raise HTTPException(status_code=401, detail="Authorization header missing")
 
+    # Assuming the token is in the format "Bearer <token>"
+    try:
+        _, token = authorization.split()
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid token format")
+
+    return token
+
+async def get_current_user(token: str = Depends(authenticate_token)):
+    try:
+        payload = jwt.decode(token, "12345678", algorithms=["HS256"])
+        user_id = payload.get("sub")
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="JWT token expired")
+    except jwt.DecodeError:
+        raise HTTPException(status_code=401, detail="Invalid JWT token")
+    user = await User.get_or_none(username=user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    return user
+@router.post("/send-message", response_model=MessageOut)
+async def send_message(message_data: MessageCreate, current_user: User = Depends(get_current_user)):
+    room_id = message_data.room_id
+    user_id = current_user.id  # Use the authenticated user's ID
+    
+    room_sid = f'{room_id}_{user_id}'
+    
+    try:
+        room = await Room.filter(id=room_id).prefetch_related('users').first()
+    except Room.DoesNotExist:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    if current_user not in room.users:
+        raise HTTPException(status_code=403, detail="User is not in the room")
+    
+    message = await Chat_Messege.create(text=message_data.text, user=current_user, room=room)
+    
+    message_out = MessageOut(
+        id=message.id,
+        text=message.text,
+        timestamp=message.timestamp,
+        user_id=message.user_id,
+        room_id=message.room_id
+    )
+    
+    await send_message_to_channel(user_id, message_data.text, room_sid)
+
+    return message_out
